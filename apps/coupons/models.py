@@ -56,15 +56,6 @@ class Coupon(models.Model):
     # 사용 완료 시간
     used_at = models.DateTimeField(null=True, blank=True)
 
-    # 사용 처리된 부스
-    used_booth = models.ForeignKey(
-        "booths.Booth",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="used_coupons",
-    )
-
     # 실제 쿠폰이 DB에 생성된 시각
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -86,13 +77,9 @@ class Coupon(models.Model):
         return f"Coupon {self.coupon_id} - {self.status}"
 
 
-# 부스별 확인 코드
+# 쿠폰 사용 확인 코드 (수령장소는 프론트에서 하드코딩, 백엔드는 코드 검증만 담당)
 class BoothVerifyCode(models.Model):
-    booth = models.OneToOneField(
-        "booths.Booth", on_delete=models.CASCADE, related_name="verify_code_entry"
-    )
-
     code = models.CharField(max_length=20, unique=True)
 
     def __str__(self):
-        return f"{self.booth} - {self.code}"
+        return self.code

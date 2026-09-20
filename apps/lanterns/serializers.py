@@ -10,7 +10,7 @@ from apps.booths.models import Booth
 from common.exceptions import ApiError, InvalidInput, NotFound
 from common.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
-from .models import Lantern
+from .models import Lantern, LanternReport
 from .validators import contains_forbidden_word
 
 
@@ -46,6 +46,9 @@ class LanternCreateSerializer(ForbiddenWordValidationMixin, serializers.ModelSer
         today = timezone.localdate()
 
         self._today = today
+
+        if not attrs.get("nickname"):
+            attrs["nickname"] = "익명의 코끼리"
 
         if not (settings.FESTIVAL_START_DATE <= today <= settings.FESTIVAL_END_DATE):
             raise InvalidInput(
@@ -86,9 +89,7 @@ class LanternCreateSerializer(ForbiddenWordValidationMixin, serializers.ModelSer
         booth_id = validated_data["booth_id"]
 
         with transaction.atomic():
-            lantern = Lantern.objects.create(
-                user=user, festival_date=self._today, **validated_data
-            )
+            lantern = Lantern.objects.create(user=user, festival_date=self._today, **validated_data)
             Booth.objects.filter(id=booth_id).update(lantern_count=F("lantern_count") + 1)
 
         return lantern
@@ -103,6 +104,34 @@ class LanternUpdateSerializer(ForbiddenWordValidationMixin, serializers.ModelSer
         model = Lantern
         fields = ["lantern_id", "nickname", "message", "updated_at"]
         read_only_fields = ["updated_at"]
+
+
+class LanternReportCreateSerializer(serializers.ModelSerializer):
+    report_id = serializers.IntegerField(source="id", read_only=True)
+
+    class Meta:
+        model = LanternReport
+        fields = ["report_id", "reason"]
+
+    def validate(self, attrs):
+        lantern = self.context["lantern"]
+        user = self.context["request"].user
+
+        if LanternReport.objects.filter(lantern=lantern, user=user).exists():
+            raise ApiError(
+                code="ALREADY_REPORTED",
+                message="이미 신고한 등불입니다.",
+                status_code=status.HTTP_409_CONFLICT,
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        return LanternReport.objects.create(
+            lantern=self.context["lantern"],
+            user=self.context["request"].user,
+            **validated_data,
+        )
 
 
 class LanternListQuerySerializer(serializers.Serializer):

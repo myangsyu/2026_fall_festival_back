@@ -1,5 +1,7 @@
 """Tests for user lost items API."""
+
 from datetime import date
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -25,10 +27,16 @@ class TestUserLostItemAPI(APITestCase):
             image_url="https://cdn.example.com/lost/case2.jpg",
             sort_order=2,
         )
-        self.tag1 = LostItemTag.objects.create(lost_item=self.item1, keyword="휴대폰케이스", sort_order=1)
+        self.tag1 = LostItemTag.objects.create(
+            lost_item=self.item1, keyword="휴대폰케이스", sort_order=1
+        )
         self.tag2 = LostItemTag.objects.create(lost_item=self.item1, keyword="검정색", sort_order=2)
-        self.tag3 = LostItemTag.objects.create(lost_item=self.item1, keyword="아이폰14pro", sort_order=3)
-        self.tag4 = LostItemTag.objects.create(lost_item=self.item1, keyword="대운동장", sort_order=4)
+        self.tag3 = LostItemTag.objects.create(
+            lost_item=self.item1, keyword="아이폰14pro", sort_order=3
+        )
+        self.tag4 = LostItemTag.objects.create(
+            lost_item=self.item1, keyword="대운동장", sort_order=4
+        )
 
         # 2. 분실물 2
         self.item2 = LostItem.objects.create(

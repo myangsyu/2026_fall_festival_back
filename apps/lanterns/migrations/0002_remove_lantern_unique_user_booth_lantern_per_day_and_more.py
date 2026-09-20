@@ -4,20 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('accounts', '0001_initial'),
-        ('booths', '0001_initial'),
-        ('lanterns', '0001_initial'),
+        ("accounts", "0001_initial"),
+        ("booths", "0001_initial"),
+        ("lanterns", "0001_initial"),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='lantern',
-            name='unique_user_booth_lantern_per_day',
+            model_name="lantern",
+            name="unique_user_booth_lantern_per_day",
         ),
         migrations.AddConstraint(
-            model_name='lantern',
+            model_name="lantern",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("deleted_at__isnull", True)),
                 fields=("user", "booth", "festival_date"),

@@ -1,16 +1,58 @@
 """Accounts API views."""
 
+import secrets
 from datetime import datetime, timedelta
 
 import jwt
 import requests
 from django.conf import settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import User
-from .serializers import LoginSerializer, UserSerializer
+from .models import RefreshToken, User
+from .serializers import LoginSerializer, RefreshTokenSerializer, UserSerializer
+
+
+# refresh_token 발급
+def issue_refresh_token(user):
+    RefreshToken.objects.filter(user=user, expires_at__lt=timezone.now()).delete()
+
+    MAX_TOKENS_PER_USER = 5
+    existing = RefreshToken.objects.filter(user=user).order_by("created_at")
+    if existing.count() >= MAX_TOKENS_PER_USER:
+        overflow_count = existing.count() - MAX_TOKENS_PER_USER + 1
+        oldest_ids = list(existing.values_list("id", flat=True)[:overflow_count])
+        RefreshToken.objects.filter(id__in=oldest_ids).delete()
+
+    token = secrets.token_urlsafe(32)
+
+    RefreshToken.objects.create(
+        user=user,
+        token=token,
+        expires_at=timezone.now() + timedelta(days=7),
+    )
+
+    return token
+
+
+# jwt_token 생성
+def generate_jwt_token(user_id):
+
+    now = datetime.now()
+
+    expired_date = now + timedelta(hours=24)
+
+    payload = {"user_id": user_id, "iat": now.timestamp(), "exp": expired_date.timestamp()}
+
+    token = jwt.encode(
+        payload,
+        settings.SECRET_KEY,
+        algorithm="HS256",  # 대칭키 암호화
+    )
+
+    return token
 
 
 class KakaoLoginView(APIView):
@@ -155,25 +197,9 @@ class KakaoLoginView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # jwt_token 생성
-        def generate_jwt_token(user_id):
-
-            now = datetime.now()
-
-            expired_date = now + timedelta(days=4)
-
-            payload = {"user_id": user_id, "iat": now.timestamp(), "exp": expired_date.timestamp()}
-
-            token = jwt.encode(
-                payload,
-                settings.SECRET_KEY,
-                algorithm="HS256",  # 대칭키 암호화
-            )
-
-            return token
-
         try:
             access_token = generate_jwt_token(user.id)
+            refresh_token = issue_refresh_token(user)
 
         except Exception as error:
             return Response(
@@ -194,8 +220,72 @@ class KakaoLoginView(APIView):
                 "message": "카카오톡 1초 로그인 성공",
                 "data": {
                     "access_token": access_token,
+                    "refresh_token": refresh_token,
                     "is_new_user": is_new_user,
                     "user": UserSerializer(user).data,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TokenRefreshView(APIView):
+    """refresh_token으로 access_token 재발급"""
+
+    def post(self, request):
+        serializer = RefreshTokenSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "code": "400",
+                    "message": "입력값이 올바르지 않습니다.",
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token_value = serializer.validated_data["refresh_token"]
+
+        try:
+            refresh_token = RefreshToken.objects.get(token=token_value)
+        except RefreshToken.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "code": "INVALID_REFRESH_TOKEN",
+                    "message": "유효하지 않거나 만료된 refresh_token입니다.",
+                    "errors": {"refresh_token": "재로그인이 필요합니다."},
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if refresh_token.expires_at < timezone.now():
+            refresh_token.delete()
+            return Response(
+                {
+                    "success": False,
+                    "code": "INVALID_REFRESH_TOKEN",
+                    "message": "유효하지 않거나 만료된 refresh_token입니다.",
+                    "errors": {"refresh_token": "재로그인이 필요합니다."},
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        user = refresh_token.user
+        refresh_token.delete()  # 기존 것 폐기
+
+        new_access_token = generate_jwt_token(user.id)
+        new_refresh_token = issue_refresh_token(user)
+
+        return Response(
+            {
+                "success": True,
+                "code": "TOKEN_REFRESHED",
+                "message": "토큰이 재발급되었습니다",
+                "data": {
+                    "access_token": new_access_token,
+                    "refresh_token": new_refresh_token,
                 },
             },
             status=status.HTTP_200_OK,

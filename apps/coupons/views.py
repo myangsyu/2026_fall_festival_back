@@ -260,11 +260,9 @@ class CouponUseView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        matched_booth = (
-            BoothVerifyCode.objects.select_related("booth").filter(code=verify_code).first()
-        )
+        matched_code = BoothVerifyCode.objects.filter(code=verify_code).first()
 
-        if not matched_booth:
+        if not matched_code:
             return Response(
                 {
                     "success": False,
@@ -279,13 +277,10 @@ class CouponUseView(APIView):
 
         coupon.used_at = timezone.now()
 
-        coupon.used_booth = matched_booth.booth
-
         coupon.save(
             update_fields=[
                 "status",
                 "used_at",
-                "used_booth",
             ]
         )
 
@@ -298,10 +293,6 @@ class CouponUseView(APIView):
                     "coupon_id": coupon.coupon_id,
                     "status": coupon.status,
                     "used_at": coupon.used_at,
-                    "used_booth": {
-                        "booth_id": matched_booth.booth.id,
-                        "booth_name": matched_booth.booth.name,
-                    },
                 },
             },
             status=status.HTTP_200_OK,

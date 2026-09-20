@@ -23,17 +23,17 @@ def _alive_children():
 def list_lost_items(*, found_date=None, keyword=None):
     """Admin and public list queryset, newest first. Caller paginates."""
     queryset = LostItem.objects.alive()
-    
+
     if found_date is not None:
         queryset = queryset.filter(found_date=found_date)
-        
+
     if keyword:
         keyword = keyword.strip()
         queryset = queryset.filter(
             Q(title__icontains=keyword)
             | Q(tags__keyword__icontains=keyword, tags__deleted_at__isnull=True)
         ).distinct()
-        
+
     return queryset.prefetch_related(*_alive_children()).order_by("-created_at", "-lost_item_id")
 
 

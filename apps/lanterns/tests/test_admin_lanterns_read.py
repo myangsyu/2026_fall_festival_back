@@ -92,12 +92,8 @@ class TestAdminLanternListAPI:
         u1 = User.objects.create(kakao_id=5001, nickname="신고자1")
         u2 = User.objects.create(kakao_id=5002, nickname="신고자2")
 
-        LanternReport.objects.create(
-            lantern=lantern, user=u1, reason=LanternReport.Reason.ABUSE
-        )
-        LanternReport.objects.create(
-            lantern=lantern, user=u2, reason=LanternReport.Reason.OBSCENE
-        )
+        LanternReport.objects.create(lantern=lantern, user=u1, reason=LanternReport.Reason.ABUSE)
+        LanternReport.objects.create(lantern=lantern, user=u2, reason=LanternReport.Reason.OBSCENE)
 
         response = client.get(ADMIN_LANTERNS_URL, **auth_headers)
         assert response.status_code == 200
@@ -199,9 +195,7 @@ class TestAdminLanternDetailAPI:
         LanternReport.objects.create(
             lantern=lantern, user=r_user2, reason=LanternReport.Reason.OBSCENE
         )
-        LanternReport.objects.create(
-            lantern=lantern, user=r_user3, reason=LanternReport.Reason.ETC
-        )
+        LanternReport.objects.create(lantern=lantern, user=r_user3, reason=LanternReport.Reason.ETC)
 
         response = client.get(f"{ADMIN_LANTERNS_URL}{lantern.id}/", **auth_headers)
         assert response.status_code == 200

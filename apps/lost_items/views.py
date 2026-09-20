@@ -6,6 +6,7 @@
 
 from drf_spectacular.utils import extend_schema
 from rest_framework import status as http_status
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 
@@ -20,6 +21,8 @@ from .serializers import (
     LostItemDeleteResponseSerializer,
     LostItemDetailResponseSerializer,
     LostItemIdResponseSerializer,
+    LostItemImageUploadRequestSerializer,
+    LostItemImageUploadResponseSerializer,
     LostItemListQuerySerializer,
     LostItemListResponseSerializer,
     LostItemUpdateResponseSerializer,
@@ -194,6 +197,47 @@ class AdminLostItemDetailView(AdminLostItemAPIView):
             "LOST_ITEM_DELETE_SUCCESS",
             "분실물을 삭제했습니다.",
             {"lost_item_id": lost_item.pk, "deleted_at": deleted_at},
+        )
+
+
+class AdminLostItemImageUploadView(AdminLostItemAPIView):
+    """관리자 분실물 이미지 업로드 API."""
+
+    permission_classes = [IsAdmin]
+    parser_classes = [MultiPartParser]
+
+    @extend_schema(
+        tags=["admin-lost-items"],
+        summary="분실물 이미지 업로드 (관리자)",
+        operation_id="admin_lost_item_image_upload",
+        request=LostItemImageUploadRequestSerializer,
+        responses={
+            201: LostItemImageUploadResponseSerializer,
+            400: ErrorResponseSerializer,
+            401: ErrorResponseSerializer,
+            413: ErrorResponseSerializer,
+            415: ErrorResponseSerializer,
+        },
+    )
+    def post(self, request):
+        serializer = LostItemImageUploadRequestSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            raise InvalidInput(
+                errors={key: str(value[0]) for key, value in serializer.errors.items()}
+            )
+
+        # 파일 검증 및 저장
+        storage_url = services.store_image(serializer.validated_data["file"])
+
+        # 클라이언트에서 바로 사용할 수 있도록 절대 URL 생성
+        image_url = request.build_absolute_uri(storage_url)
+
+        return success_response(
+            "LOST_ITEM_IMAGE_UPLOAD_SUCCESS",
+            "이미지를 업로드했습니다.",
+            {"image_url": image_url},
+            status=http_status.HTTP_201_CREATED,
         )
 
 

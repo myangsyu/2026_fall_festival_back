@@ -1,9 +1,6 @@
 from rest_framework import serializers
 
-from .models import (
-    BoothVerifyCode,
-    Coupon,
-)
+from .models import Coupon
 
 
 # 쿠폰 발급 요청
@@ -15,42 +12,18 @@ class CouponIssueSerializer(serializers.ModelSerializer):
         ]
 
 
-# 목록조회 응답 - 사용 가능 부스 (verify_code는 절대 노출 안 함)
-class BoothVerifyCodeBriefSerializer(serializers.ModelSerializer):
-    booth_id = serializers.IntegerField(source="booth.id")
-    booth_name = serializers.CharField(source="booth.name")
-
-    class Meta:
-        model = BoothVerifyCode
-        fields = [
-            "booth_id",
-            "booth_name",
-        ]
-
-
 # 나의 쿠폰 목록 조회 응답
+# 수령장소 안내는 프론트에서 하드코딩하므로 응답에 포함하지 않음
 class CouponListItemSerializer(serializers.ModelSerializer):
-    usable_booths = serializers.SerializerMethodField()
-
     class Meta:
         model = Coupon
         fields = [
             "coupon_id",
             "status",
             "issued_date",
-            "usable_booths",
             "scratched_at",
             "used_at",
         ]
-
-    def get_usable_booths(self, obj):
-        # WIN/USED가 아니면 부스 목록 안 보여줌
-        if obj.status not in (Coupon.Status.WIN, Coupon.Status.USED):
-            return None
-
-        booths = BoothVerifyCode.objects.all()
-
-        return BoothVerifyCodeBriefSerializer(booths, many=True).data
 
 
 # 쿠폰 사용 처리 요청

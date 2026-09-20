@@ -5,6 +5,7 @@ from django.db.models import F
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 
@@ -28,6 +29,7 @@ from .serializers import (
     AdminLanternListQuerySerializer,
     LanternCreateSerializer,
     LanternListQuerySerializer,
+    LanternReportCreateSerializer,
     LanternUpdateSerializer,
     to_admin_lantern_detail,
     to_admin_lantern_list_item,
@@ -84,12 +86,17 @@ class LanternViewSet(
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            raise InvalidInput(
+                code="INVALID_REQUEST_PARAM",
+                message="요청 파라미터가 올바르지 않습니다.",
+                errors={key: str(value[0]) for key, value in serializer.errors.items()},
+            )
         serializer.save()
         return success_response(
-            code="LANTERN_CREATE_SUCCESS",
-            message="등불을 성공적으로 남겼어요!",
-            data=serializer.data,
+            "LANTERN_CREATE_SUCCESS",
+            "등불을 성공적으로 남겼어요!",
+            serializer.data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -105,12 +112,17 @@ class LanternViewSet(
             )
 
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            raise InvalidInput(
+                code="INVALID_REQUEST_PARAM",
+                message="요청 파라미터가 올바르지 않습니다.",
+                errors={key: str(value[0]) for key, value in serializer.errors.items()},
+            )
         serializer.save()
         return success_response(
-            code="LANTERN_UPDATE_SUCCESS",
-            message="등불이 수정되었습니다.",
-            data=serializer.data,
+            "LANTERN_UPDATE_SUCCESS",
+            "등불이 수정되었습니다.",
+            serializer.data,
         )
 
     def perform_destroy(self, instance):
@@ -172,6 +184,30 @@ class LanternViewSet(
             "LANTERN_DETAIL_SUCCESS",
             "등불을 조회했습니다.",
             to_lantern_item(lantern),
+        )
+
+    @action(detail=True, methods=["post"], url_path="reports")
+    def report(self, request, pk=None):
+        lantern = selectors.get_lantern(pk)
+        if lantern is None or lantern.deleted_at is not None:
+            raise NotFound(code="LANTERN_NOT_FOUND", message="존재하지 않는 등불입니다.")
+
+        serializer = LanternReportCreateSerializer(
+            data=request.data, context={"request": request, "lantern": lantern}
+        )
+        if not serializer.is_valid():
+            raise InvalidInput(
+                code="INVALID_REQUEST_PARAM",
+                message="reason 값이 올바르지 않습니다.",
+                errors={key: str(value[0]) for key, value in serializer.errors.items()},
+            )
+        serializer.save()
+
+        return success_response(
+            "LANTERN_REPORT_SUCCESS",
+            "신고가 접수되었습니다.",
+            serializer.data,
+            status=status.HTTP_201_CREATED,
         )
 
 

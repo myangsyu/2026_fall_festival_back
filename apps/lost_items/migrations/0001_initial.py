@@ -5,62 +5,91 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='LostItem',
+            name="LostItem",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(blank=True, null=True)),
-                ('deleted_at', models.DateTimeField(blank=True, null=True)),
-                ('lost_item_id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('title', models.CharField(max_length=100)),
-                ('found_date', models.DateField()),
-                ('created_by_admin_id', models.BigIntegerField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(blank=True, null=True)),
+                ("deleted_at", models.DateTimeField(blank=True, null=True)),
+                ("lost_item_id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("title", models.CharField(max_length=100)),
+                ("found_date", models.DateField()),
+                ("created_by_admin_id", models.BigIntegerField(blank=True, null=True)),
             ],
             options={
-                'db_table': 'lost_item',
-                'ordering': ['-created_at', '-lost_item_id'],
-                'indexes': [models.Index(fields=['deleted_at', 'found_date'], name='lost_item_deleted_09f6b7_idx'), models.Index(fields=['deleted_at', '-created_at'], name='lost_item_deleted_ba5f9f_idx')],
+                "db_table": "lost_item",
+                "ordering": ["-created_at", "-lost_item_id"],
+                "indexes": [
+                    models.Index(
+                        fields=["deleted_at", "found_date"], name="lost_item_deleted_09f6b7_idx"
+                    ),
+                    models.Index(
+                        fields=["deleted_at", "-created_at"], name="lost_item_deleted_ba5f9f_idx"
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='LostItemImage',
+            name="LostItemImage",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(blank=True, null=True)),
-                ('deleted_at', models.DateTimeField(blank=True, null=True)),
-                ('image_id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('image_url', models.URLField(max_length=500)),
-                ('sort_order', models.PositiveIntegerField()),
-                ('lost_item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='images', to='lost_items.lostitem')),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(blank=True, null=True)),
+                ("deleted_at", models.DateTimeField(blank=True, null=True)),
+                ("image_id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("image_url", models.URLField(max_length=500)),
+                ("sort_order", models.PositiveIntegerField()),
+                (
+                    "lost_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="images",
+                        to="lost_items.lostitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'lost_item_image',
-                'ordering': ['sort_order', 'image_id'],
-                'indexes': [models.Index(fields=['lost_item', 'deleted_at', 'sort_order'], name='lost_item_i_lost_it_0607c4_idx')],
+                "db_table": "lost_item_image",
+                "ordering": ["sort_order", "image_id"],
+                "indexes": [
+                    models.Index(
+                        fields=["lost_item", "deleted_at", "sort_order"],
+                        name="lost_item_i_lost_it_0607c4_idx",
+                    )
+                ],
             },
         ),
         migrations.CreateModel(
-            name='LostItemTag',
+            name="LostItemTag",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(blank=True, null=True)),
-                ('deleted_at', models.DateTimeField(blank=True, null=True)),
-                ('tag_id', models.BigAutoField(primary_key=True, serialize=False)),
-                ('keyword', models.CharField(max_length=30)),
-                ('sort_order', models.PositiveIntegerField()),
-                ('lost_item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='tags', to='lost_items.lostitem')),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(blank=True, null=True)),
+                ("deleted_at", models.DateTimeField(blank=True, null=True)),
+                ("tag_id", models.BigAutoField(primary_key=True, serialize=False)),
+                ("keyword", models.CharField(max_length=30)),
+                ("sort_order", models.PositiveIntegerField()),
+                (
+                    "lost_item",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="tags",
+                        to="lost_items.lostitem",
+                    ),
+                ),
             ],
             options={
-                'db_table': 'lost_item_tag',
-                'ordering': ['sort_order', 'tag_id'],
-                'indexes': [models.Index(fields=['lost_item', 'deleted_at', 'sort_order'], name='lost_item_t_lost_it_e116dc_idx')],
+                "db_table": "lost_item_tag",
+                "ordering": ["sort_order", "tag_id"],
+                "indexes": [
+                    models.Index(
+                        fields=["lost_item", "deleted_at", "sort_order"],
+                        name="lost_item_t_lost_it_e116dc_idx",
+                    )
+                ],
             },
         ),
     ]
