@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.authentication import JWTAuthentication
 from apps.booths.models import Booth
+from common.clock import festival_localdate
 from common.exceptions import (
     ApiError,
     InvalidInput,
@@ -21,16 +22,27 @@ from common.exceptions import (
 from common.pagination import paginate
 from common.permissions import IsAdmin
 from common.responses import success_response
+from common.schema import ErrorResponseSerializer
 
-from . import selectors
+from . import selectors, services
 from .models import Lantern
 from .serializers import (
-    AdminLanternDetailSerializer,
+    AdminLanternDeleteResponseSerializer,
+    AdminLanternDetailResponseSerializer,
     AdminLanternListQuerySerializer,
+    AdminLanternListResponseSerializer,
+    LanternBoothOptionSerializer,
+    LanternBoothOptionsResponseSerializer,
+    LanternCreateResponseSerializer,
     LanternCreateSerializer,
+    LanternDeleteResponseSerializer,
     LanternListQuerySerializer,
     LanternReportCreateSerializer,
+    LanternReportResponseSerializer,
+    LanternUpdateResponseSerializer,
     LanternUpdateSerializer,
+    UserLanternDetailResponseSerializer,
+    UserLanternListResponseSerializer,
     to_admin_lantern_detail,
     to_admin_lantern_list_item,
     to_lantern_item,
@@ -50,7 +62,7 @@ class LanternViewSet(
     queryset = Lantern.objects.all()
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve"):
+        if self.action in ("list", "retrieve", "booth_options"):
             return [AllowAny()]
         return [IsAuthenticated()]
 
@@ -84,6 +96,20 @@ class LanternViewSet(
 
         return obj
 
+    @extend_schema(
+        tags=["lanterns"],
+        summary="등불 등록",
+        description="새로운 등불을 등록합니다.",
+        operation_id="user_lantern_create",
+        request=LanternCreateSerializer,
+        responses={
+            201: LanternCreateResponseSerializer,
+            400: ErrorResponseSerializer,
+            401: ErrorResponseSerializer,
+            404: ErrorResponseSerializer,
+            409: ErrorResponseSerializer,
+        },
+    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
@@ -100,11 +126,57 @@ class LanternViewSet(
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(
+        tags=["lanterns"],
+        summary="등불 등록 가능 부스 목록",
+        description=(
+            "오늘 활성 운영 기록이 있는 부스를 시간대 구분 없이 조회합니다. "
+            "주간과 야간에 모두 운영하는 부스도 한 번만 반환합니다."
+        ),
+        operation_id="user_lantern_booth_options",
+        auth=[],
+        responses={200: LanternBoothOptionsResponseSerializer},
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="booth-options",
+        authentication_classes=[],
+        permission_classes=[AllowAny],
+    )
+    def booth_options(self, request):
+        festival_date = festival_localdate()
+        booths = selectors.lantern_booth_options_queryset(festival_date=festival_date)
+
+        return success_response(
+            "LANTERN_BOOTH_OPTIONS_SUCCESS",
+            "등불을 달 수 있는 부스 목록을 조회했습니다.",
+            {
+                "festival_date": festival_date.isoformat(),
+                "booths": LanternBoothOptionSerializer(booths, many=True).data,
+            },
+        )
+
+    @extend_schema(
+        tags=["lanterns"],
+        summary="등불 수정",
+        description="내가 작성한 오늘의 등불을 수정합니다.",
+        operation_id="user_lantern_update",
+        request=LanternUpdateSerializer,
+        responses={
+            200: LanternUpdateResponseSerializer,
+            400: ErrorResponseSerializer,
+            401: ErrorResponseSerializer,
+            403: ErrorResponseSerializer,
+            404: ErrorResponseSerializer,
+            409: ErrorResponseSerializer,
+        },
+    )
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
 
-        if instance.festival_date != timezone.localdate():
+        if instance.festival_date != festival_localdate():
             raise ApiError(
                 code="NOT_TODAY_LANTERN",
                 message="지난 등불은 수정할 수 없어요.",
@@ -126,12 +198,34 @@ class LanternViewSet(
         )
 
     def perform_destroy(self, instance):
+        now = timezone.now()
         with transaction.atomic():
-            instance.deleted_at = timezone.now()
-            instance.deleted_by = Lantern.DeletedBy.USER
-            instance.save(update_fields=["deleted_at", "deleted_by"])
+            updated_rows = Lantern.objects.filter(id=instance.id, deleted_at__isnull=True).update(
+                deleted_at=now, deleted_by=Lantern.DeletedBy.USER
+            )
+
+            if updated_rows == 0:
+                raise ApiError(
+                    code="ALREADY_DELETED",
+                    message="이미 삭제된 등불입니다.",
+                    status_code=status.HTTP_409_CONFLICT,
+                )
+
             Booth.objects.filter(id=instance.booth_id).update(lantern_count=F("lantern_count") - 1)
 
+    @extend_schema(
+        tags=["lanterns"],
+        summary="등불 삭제 (작성자 본인)",
+        description="본인이 작성한 등불을 삭제합니다.",
+        operation_id="user_lantern_delete",
+        responses={
+            200: LanternDeleteResponseSerializer,
+            401: ErrorResponseSerializer,
+            403: ErrorResponseSerializer,
+            404: ErrorResponseSerializer,
+            409: ErrorResponseSerializer,
+        },
+    )
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self.perform_destroy(instance)
@@ -141,6 +235,19 @@ class LanternViewSet(
             data=None,
         )
 
+    @extend_schema(
+        tags=["lanterns"],
+        summary="등불 목록 조회",
+        description="부스별/일자별/내 등불 목록을 조회합니다.",
+        operation_id="user_lantern_list",
+        auth=[],
+        parameters=[LanternListQuerySerializer],
+        responses={
+            200: UserLanternListResponseSerializer,
+            400: ErrorResponseSerializer,
+            401: ErrorResponseSerializer,
+        },
+    )
     def list(self, request, *args, **kwargs):
         query = LanternListQuerySerializer(data=request.query_params)
         if not query.is_valid():
@@ -168,9 +275,23 @@ class LanternViewSet(
         return success_response(
             "LANTERN_LIST_SUCCESS",
             "등불 목록을 조회했습니다.",
-            {**page.as_meta(), "items": [to_lantern_item(item) for item in page.items]},
+            {
+                **page.as_meta(),
+                "items": [to_lantern_item(item, request.user) for item in page.items],
+            },
         )
 
+    @extend_schema(
+        tags=["lanterns"],
+        summary="등불 상세 조회",
+        description="등불 상세 정보를 조회합니다.",
+        operation_id="user_lantern_detail",
+        auth=[],
+        responses={
+            200: UserLanternDetailResponseSerializer,
+            404: ErrorResponseSerializer,
+        },
+    )
     def retrieve(self, request, *args, **kwargs):
         lantern = selectors.get_lantern(self.kwargs["pk"])
         if lantern is None:
@@ -183,9 +304,23 @@ class LanternViewSet(
         return success_response(
             "LANTERN_DETAIL_SUCCESS",
             "등불을 조회했습니다.",
-            to_lantern_item(lantern),
+            to_lantern_item(lantern, request.user),
         )
 
+    @extend_schema(
+        tags=["lanterns"],
+        summary="등불 신고",
+        description="부적절한 등불을 신고합니다.",
+        operation_id="user_lantern_report",
+        request=LanternReportCreateSerializer,
+        responses={
+            201: LanternReportResponseSerializer,
+            400: ErrorResponseSerializer,
+            401: ErrorResponseSerializer,
+            404: ErrorResponseSerializer,
+            409: ErrorResponseSerializer,
+        },
+    )
     @action(detail=True, methods=["post"], url_path="reports")
     def report(self, request, pk=None):
         lantern = selectors.get_lantern(pk)
@@ -227,8 +362,17 @@ class AdminLanternListView(AdminLanternAPIView):
     @extend_schema(
         tags=["admin-lanterns"],
         summary="관리자 등불 목록 조회",
+        description=(
+            "관리자 등불 목록을 조회합니다. "
+            "신고 많은 순(REPORT_DESC) 또는 최신순(LATEST) 정렬을 지원합니다."
+        ),
         operation_id="admin_lantern_list",
         parameters=[AdminLanternListQuerySerializer],
+        responses={
+            200: AdminLanternListResponseSerializer,
+            400: ErrorResponseSerializer,
+            401: ErrorResponseSerializer,
+        },
     )
     def get(self, request):
         query_serializer = AdminLanternListQuerySerializer(data=request.query_params)
@@ -261,13 +405,20 @@ class AdminLanternListView(AdminLanternAPIView):
 
 
 class AdminLanternDetailView(AdminLanternAPIView):
-    """관리자 등불 신고 확인 모달 상세 조회 API (GET /api/lanterns/<int:lantern_id>/)."""
+    """관리자 등불 상세 조회 및 블라인드(삭제) API."""
 
     @extend_schema(
         tags=["admin-lanterns"],
         summary="관리자 등불 신고 상세 확인 (모달)",
+        description=(
+            "특정 등불의 최다 신고 사유, 총 신고 횟수, 부스 정보 및 등불 원문을 조회합니다."
+        ),
         operation_id="admin_lantern_detail",
-        responses={200: AdminLanternDetailSerializer},
+        responses={
+            200: AdminLanternDetailResponseSerializer,
+            401: ErrorResponseSerializer,
+            404: ErrorResponseSerializer,
+        },
     )
     def get(self, request, lantern_id: int):
         lantern = selectors.get_admin_lantern_by_id(lantern_id=lantern_id)
@@ -281,4 +432,31 @@ class AdminLanternDetailView(AdminLanternAPIView):
             "ADMIN_LANTERN_DETAIL_SUCCESS",
             "관리자 등불 신고 상세 조회에 성공했습니다.",
             to_admin_lantern_detail(lantern, top_reason),
+        )
+
+    @extend_schema(
+        tags=["admin-lanterns"],
+        summary="관리자 등불 삭제 (블라인드 처리)",
+        description=(
+            "관리자 권한으로 부적절한 등불을 블라인드(Soft Delete) 처리하고 "
+            "연관 부스의 등불 수를 1 차감합니다."
+        ),
+        operation_id="admin_lantern_delete",
+        responses={
+            200: AdminLanternDeleteResponseSerializer,
+            401: ErrorResponseSerializer,
+            404: ErrorResponseSerializer,
+        },
+    )
+    def delete(self, request, lantern_id: int):
+        lantern = selectors.get_admin_lantern_by_id(lantern_id=lantern_id)
+        if lantern is None:
+            raise NotFound("해당 등불을 찾을 수 없습니다.")
+
+        services.delete_admin_lantern(lantern)
+
+        return success_response(
+            "ADMIN_LANTERN_DELETE_SUCCESS",
+            "등불이 성공적으로 삭제되었습니다.",
+            {},
         )

@@ -11,6 +11,9 @@ env = environ.Env(
     DJANGO_DEBUG=(bool, False),
     DJANGO_ALLOWED_HOSTS=(list, []),
     CORS_ALLOWED_ORIGINS=(list, []),
+    ADMIN_HOSTS=(list, ["admin.localhost"]),
+    REDIS_URL=(str, "redis://127.0.0.1:6379/1"),
+    R2_ENABLED=(bool, False),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -21,12 +24,17 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="unsafe-scaffold-only-secret-key")
 DEBUG = env.bool("DJANGO_DEBUG")
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
+# 관리자 API를 서브도메인으로 분리하기 위한 호스트 목록 (SubdomainURLRoutingMiddleware).
+# ALLOWED_HOSTS에도 반드시 포함되어야 합니다.
+ADMIN_HOSTS = env.list("ADMIN_HOSTS")
+
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
     "drf_spectacular",
+    "storages",
     "apps.accounts.apps.AccountsConfig",
     "apps.admins.apps.AdminsConfig",
     "apps.booths.apps.BoothsConfig",
@@ -41,6 +49,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "config.middleware.SubdomainURLRoutingMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
@@ -66,6 +75,15 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+R2_ENABLED = env.bool("R2_ENABLED")
+
+# Redis 연결만 준비한다. 실제 캐시 읽기/쓰기와 DRF throttle 적용은 기능별로 추가한다.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_URL"),
+    }
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -82,12 +100,30 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "2026 Fall Festival API",
     "DESCRIPTION": "Dongguk University 2026 fall festival backend API",
     "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "관리자 토큰 또는 사용자 JWT 토큰",
+            }
+        }
+    },
+    "SECURITY": [{"BearerAuth": []}],
 }
 
 ADMIN_API_TOKEN = env("ADMIN_API_TOKEN", default="")
 
 FESTIVAL_START_DATE = date(2026, 9, 29)
 FESTIVAL_END_DATE = date(2026, 10, 1)
+
+# 축제 비즈니스 가상 시간 (common.clock). 공연·부스·등불·쿠폰 날짜 판정에만 적용되고
+# JWT, created_at 등 보안·기록용 시간은 항상 실제 시간을 사용한다.
+FESTIVAL_TIME_ENABLED = env.bool("FESTIVAL_TIME_ENABLED", default=False)
+FESTIVAL_TIME_OFFSET_SECONDS = env.int("FESTIVAL_TIME_OFFSET_SECONDS", default=0)
 
 # 분실물 이미지 업로드 설정
 LOST_ITEM_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
